@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+.env
+node_modules/
+.next/
+.env.local
+npm-debug.log*
