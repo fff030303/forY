@@ -5,5 +5,7 @@ __pycache__/
 .env
 node_modules/
 .next/
+*.tsbuildinfo
+apps/api/data/
 .env.local
 npm-debug.log*

@@ -1,65 +1,156 @@
-# Persona Companion
+# 见字 Persona Companion V1
 
-一个从历史聊天记录构建对话人格、长期记忆与持续反馈闭环的虚拟陪伴产品。
+把经过授权的双人聊天记录转换成一个可解释、可修正、可回滚的聊天人格。
 
-目前已完成：
+## V1 已实现
 
-- `GET /health`：健康检查。
-- `POST /chat`：接收聊天消息并返回固定回复。
-
-## 当前目录
-
-```text
-apps/api/
-├── app/
-│   └── main.py
-├── tests/
-│   ├── test_health.py
-│   └── test_chat.py
-└── requirements.txt
-```
+- 创建相互隔离的人格项目，并强制确认数据授权。
+- 导入微信转换文本或 JSONL，识别参与者、去重、统计异常并提示敏感信息。
+- 可选连接本机 `wx-cli`，在网页中选择私人联系人、日期范围并只读预览后导入。
+- 支持微信完整记录分页导入：每页落库、断点续传、规则粗分段、DeepSeek 分段分析与进度查看。
+- 原始消息、导入任务和分析片段分别保存，AI 结论保留可追溯的原始消息 ID。
+- 确认目标人物和当前用户；检测到非双人聊天时阻止构建。
+- 从目标人物真实消息生成表达画像、关系画像、共同记忆和上下文—回复范例。
+- 每项人格结论展示置信度与统计证据。
+- 持久化 Web 聊天；本地无模型密钥时使用可复现的范例检索与规则回复。
+- “像 / 不像”反馈与理想回复校准。
+- 反馈先进入候选区，用户发布后才生成新人格版本。
+- 人格版本切换和回滚。
+- 后续聊天中的新事实只从用户消息生成候选记忆，人工批准后才写入长期记忆。
+- 查看、修改、删除记忆，以及永久删除整个人格项目。
+- AI 生成回复标记为 `generated`，不会被当成真实人格证据。
+- 基于 `X-User-Id` 的数据隔离接口，便于后续接入真实登录系统。
 
 ## 本地启动
 
-在项目根目录执行：
+需要 Python 3.9+ 和 Node.js 20+。
+
+终端一：
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r apps/api/requirements.txt
 cd apps/api
-uvicorn app.main:app --reload
+../../.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-打开：
-
-- 健康检查：http://127.0.0.1:8000/health
-- API 文档：http://127.0.0.1:8000/docs
-
-预期健康检查结果：
-
-```json
-{"status":"ok"}
-```
-
-聊天接口示例：
+终端二：
 
 ```bash
-curl -X POST http://127.0.0.1:8000/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message":"你好"}'
+cd apps/web
+npm install
+npm run dev
 ```
 
-预期结果：
+浏览器打开 [http://127.0.0.1:3000](http://127.0.0.1:3000)。API 文档位于
+[http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)。
 
-```json
-{"reply":"你好呀"}
+## 连接 DeepSeek
+
+复制 `apps/api/.env.example` 为 `apps/api/.env`，然后只在本机填写：
+
+```dotenv
+DEEPSEEK_API_KEY=你的_API_Key
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-v4-flash
 ```
 
-## 运行测试
+`.env` 已被 Git 忽略，不要把密钥写进前端、README、源码或提交记录。修改配置后
+重启后端，通过 `GET /ai/status` 查看是否已配置。配置成功后，对话接口会使用
+DeepSeek；未配置时继续使用本地规则回复。
 
-进入 `apps/api` 后执行：
+调用 DeepSeek 时，当前用户消息、选取的人格范例和长期记忆会发送到 DeepSeek API。
+原始微信数据库仍只在本机读取；后续批量分析应只发送经过分段和筛选的必要内容。
+
+## 支持的导入格式
+
+### 直接连接本机微信
+
+“数据与设置”中的“直接连接微信”使用第三方开源工具 `wx-cli`。系统不会自动安装、
+提权或修改微信程序；用户需要先在终端完成一次安装：
 
 ```bash
-pytest
+npm install -g @jackwener/wx-cli
 ```
+
+保持电脑版微信登录，然后按 `wx-cli` 官方说明完成：
+
+```bash
+wx init
+wx sessions --json
+```
+
+能够看到会话列表后，回到网页点击“检测本机微信”。网页会：
+
+1. 只显示私人会话，V1 不导入群聊和公众号。
+2. 先读取文本消息预览，不立即写入项目。
+3. 用户点击“导入全部并分析”后，使用 `wx history --offset` 分页读取，每页默认
+   1000 条并立即写入数据库。
+4. 通过参数数组调用本机命令，不使用 shell 拼接联系人名称。
+5. 子进程只继承运行所需的最小环境变量，不继承模型密钥等配置。
+6. 导入中断时保留 `next_offset`，可以从网页继续；导入完成后按跨天、六小时空档、
+   消息数和 Token 预算粗分段，再将必要片段发送给 DeepSeek。
+7. `import_jobs`、`raw_messages` 和 `analysis_chunks` 分别保存任务进度、原始消息和
+   AI 分析；人格特征、记忆与范例保留原始消息 ID。
+
+macOS 上初始化可能涉及读取微信进程和额外系统权限，部分微信版本还可能需要按照
+`wx-cli` 官方文档重新签名微信。这个操作会影响微信的 macOS 权限状态，因此本项目
+不会自动执行。请先了解风险，并且只处理自己拥有且得到授权的聊天记录。
+
+微信转换文本：
+
+```text
+[2025-02-01 09:00] 我: 明天要面试了，有点慌
+[2025-02-01 09:01] 小林: 别急，你准备得挺充分的
+```
+
+JSONL：
+
+```json
+{"speaker":"我","text":"明天要面试了","timestamp":"2025-02-01T09:00:00+08:00"}
+{"speaker":"小林","text":"别急","timestamp":"2025-02-01T09:01:00+08:00"}
+```
+
+## 测试
+
+```bash
+cd apps/api
+../../.venv/bin/python -m pytest -q
+
+cd ../web
+npm run build
+npm audit --audit-level=high
+```
+
+当前验收结果：后端 6 项测试通过，Next.js 生产构建通过，npm 已知漏洞为 0。
+
+## 工作原理
+
+```text
+真实聊天记录
+  → 解析、去重、隐私提示
+  → 用户确认双方身份
+  → 统计型人格特征 + 真实回复范例 + 共同记忆
+  → 聊天时检索相近范例
+  → 用户反馈进入候选区
+  → 人工发布新版本 / 随时回滚
+```
+
+人格、记忆和聊天记录保存在 `apps/api/data/persona_companion.db`。该目录已被
+Git 忽略，避免私人聊天数据误提交。
+
+## V1 的边界
+
+这是一个可完整本地运行的产品 V1，不是生产部署版：
+
+- 当前使用 SQLite，适合单机验证；生产环境按技术方案迁移到 PostgreSQL。
+- `X-User-Id` 是开发期身份隔离，不是正式登录认证。
+- 没有配置外部大模型时使用本地范例检索与规则回复，因此能验证人格、记忆和反馈闭环，
+  但语言能力不等同于大模型。
+- 普通个人微信号不能安全、合规地直接自动收发消息。微信接入放在 V1.1，
+  推荐通过微信小程序或公众号/企业微信的官方接口复用本 API。
+
+详细设计见：
+
+- [V1 PRD](docs/01-prd-persona-companion-mvp.md)
+- [实施方案](docs/02-implementation-plan.md)
+- [技术方案](docs/03-technical-design.md)
+- [长期记忆机制](agent-long-term-memory-design.md)

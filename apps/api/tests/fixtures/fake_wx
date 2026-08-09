@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+import json
+import sys
+
+
+if "--version" in sys.argv:
+    print("wx 0.3.0-test")
+elif "sessions" in sys.argv:
+    print(json.dumps({
+        "sessions": [
+            {
+                "display": "微信测试联系人",
+                "chat_type": "private",
+                "last_message": "晚上见",
+                "timestamp": "2025-02-02T12:01:00+08:00",
+            },
+            {"display": "测试群", "chat_type": "group"},
+        ],
+        "meta": {"status": "ok"},
+    }, ensure_ascii=False))
+elif "history" in sys.argv:
+    print(json.dumps({
+        "messages": [
+            {
+                "sender": "我",
+                "content": "明天一起吃饭吗",
+                "timestamp": "2025-02-01T09:00:00+08:00",
+            },
+            {
+                "sender": "微信测试联系人",
+                "content": "可以，还是老地方",
+                "timestamp": "2025-02-01T09:01:00+08:00",
+            },
+        ],
+        "meta": {"status": "ok"},
+    }, ensure_ascii=False))
+else:
+    print("unsupported command", file=sys.stderr)
+    raise SystemExit(1)
